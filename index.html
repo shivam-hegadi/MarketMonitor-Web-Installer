@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Market Monitor — Install</title>
+  <script src="https://cdn.jsdelivr.net/npm/esptool-js@0.4.3/bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.1.1/crypto-js.min.js"></script>
+  <style>
+    /* ─── Reset ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+
+    /* ─── Tokens ─────────────────────────────────────────── */
+    :root {
+      --white:   #ffffff;
+      --bg:      #f5f5f7;
+      --card:    #ffffff;
+      --border:  rgba(0,0,0,.08);
+      --ink:     #1d1d1f;
+      --sub:     #6e6e73;
+      --faint:   #aeaeb2;
+      --blue:    #0071e3;
+      --blue-dk: #0064cc;
+      --green:   #34c759;
+      --red:     #ff3b30;
+      --radius:  18px;
+      --font:    -apple-system, BlinkMacSystemFont, 'SF Pro Display',
+                 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    /* ─── Base ───────────────────────────────────────────── */
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--ink);
+      font-size: 17px;
+      line-height: 1.47;
+      letter-spacing: -.022em;
+    }
+
+    /* ─── Page shell ─────────────────────────────────────── */
+    .page {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 0 24px 120px;
+    }
+
+    /* ─── Nav ────────────────────────────────────────────── */
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 0 0;
+    }
+
+    .nav-wordmark {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -.03em;
+      color: var(--ink);
+      text-decoration: none;
+    }
+
+    /* ─── Hero ───────────────────────────────────────────── */
+    .hero {
+      text-align: center;
+      padding: 72px 0 56px;
+    }
+
+    /* Device preview — the signature element */
+    .device-preview {
+      width: 260px;
+      margin: 0 auto 48px;
+      position: relative;
+    }
+
+    .device-shell {
+      background: #1a1a1e;
+      border-radius: 16px;
+      padding: 10px;
+      box-shadow:
+        0 40px 80px rgba(0,0,0,.22),
+        0 0 0 1px rgba(255,255,255,.06);
+    }
+
+    .device-screen {
+      background: #0a0a0f;
+      border-radius: 8px;
+      overflow: hidden;
+      aspect-ratio: 320/240;
+      position: relative;
+    }
+
+    /* Nav bar */
+    .scr-nav {
+      background: #111820;
+      height: 16%;
+      display: flex;
+      align-items: center;
+      padding: 0 5%;
+      gap: 3%;
+    }
+
+    .scr-pill {
+      height: 55%;
+      border-radius: 999px;
+      flex: 1;
+    }
+
+    .scr-pill.active { background: #00e676; }
+    .scr-pill.dim    { background: #1c2530; }
+
+    /* Info area */
+    .scr-info {
+      padding: 4% 5%;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      height: 30%;
+    }
+
+    .scr-left {}
+    .scr-sym  { font-size: 11px; font-weight: 700; color: #e8edf2; letter-spacing: .02em; font-family: -apple-system, sans-serif; }
+    .scr-chg  { font-size: 7px; color: #00e676; margin-top: 2px; font-family: monospace; }
+    .scr-price { font-size: 13px; font-weight: 700; color: #e8edf2; text-align: right; font-family: monospace; line-height: 1.2; }
+    .scr-time  { font-size: 6px; color: #5a6a7a; text-align: right; margin-top: 2px; font-family: monospace; }
+
+    /* Chart */
+    .scr-chart {
+      height: 39%;
+      padding: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .scr-chart svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* Timeframe bar */
+    .scr-tbar {
+      background: #111820;
+      height: 15%;
+      display: flex;
+      align-items: center;
+      justify-content: space-evenly;
+      padding: 0 4%;
+    }
+
+    .scr-tp {
+      font-size: 6px;
+      font-family: monospace;
+      color: #5a6a7a;
+    }
+
+    .scr-tp.active {
+      background: #00e676;
+      color: #000;
+      padding: 2px 5px;
+      border-radius: 999px;
+      font-weight: 700;
+    }
+
+    /* Animated chart line */
+    @keyframes chartDraw {
+      from { stroke-dashoffset: 400; }
+      to   { stroke-dashoffset: 0; }
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .chart-line {
+      stroke-dasharray: 400;
+      stroke-dashoffset: 400;
+      animation: chartDraw 1.8s cubic-bezier(.4,0,.2,1) .4s forwards;
+    }
+
+    @keyframes subtlePulse {
+      0%, 100% { box-shadow: 0 40px 80px rgba(0,0,0,.22), 0 0 0 1px rgba(255,255,255,.06); }
+      50%       { box-shadow: 0 44px 88px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.08); }
+    }
+
+    .device-shell { animation: subtlePulse 4s ease-in-out infinite; }
+
+    /* Hero text */
+    .hero h1 {
+      font-size: clamp(38px, 6vw, 52px);
+      font-weight: 700;
+      letter-spacing: -.04em;
+      line-height: 1.05;
+      color: var(--ink);
+      margin-bottom: 16px;
+      animation: fadeUp .6s ease both .2s;
+    }
+
+    .hero p {
+      font-size: 19px;
+      font-weight: 400;
+      color: var(--sub);
+      letter-spacing: -.02em;
+      line-height: 1.45;
+      max-width: 420px;
+      margin: 0 auto 0;
+      animation: fadeUp .6s ease both .35s;
+    }
+
+    /* ─── Browser warning ────────────────────────────────── */
+    .browser-bar {
+      background: #fff8ec;
+      border: 1px solid rgba(255,149,0,.25);
+      border-radius: 12px;
+      padding: 14px 18px;
+      font-size: 14px;
+      color: #8a5a00;
+      display: none;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 24px;
+      animation: fadeUp .4s ease both;
+    }
+
+    .browser-bar.visible { display: flex; }
+
+    .browser-bar a { color: #c07000; font-weight: 500; }
+
+    /* ─── Install card ────────────────────────────────────── */
+    .install-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      overflow: hidden;
+      animation: fadeUp .6s ease both .5s;
+    }
+
+    /* Steps */
+    .step-row {
+      padding: 28px 32px;
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 0 20px;
+      align-items: start;
+      position: relative;
+    }
+
+    .step-row + .step-row {
+      border-top: 1px solid var(--border);
+    }
+
+    /* Connector line between step circles */
+    .step-row:not(:last-child) .step-circle::after {
+      content: '';
+      position: absolute;
+      top: 28px;
+      left: 46px;
+      width: 1px;
+      height: calc(100% - 28px + 56px);
+      background: var(--border);
+      z-index: 0;
+    }
+
+    .step-row.step-done .step-circle::after { background: var(--green); opacity: .3; }
+
+    .step-circle {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 600;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+      transition: background .3s, color .3s;
+      background: var(--bg);
+      color: var(--sub);
+      border: 1.5px solid var(--border);
+    }
+
+    .step-row.step-active .step-circle {
+      background: var(--blue);
+      color: #fff;
+      border-color: var(--blue);
+    }
+
+    .step-row.step-done .step-circle {
+      background: var(--green);
+      color: #fff;
+      border-color: var(--green);
+    }
+
+    .step-row.step-disabled {
+      opacity: .38;
+      pointer-events: none;
+    }
+
+    .step-body { padding-top: 3px; }
+
+    .step-title {
+      font-size: 17px;
+      font-weight: 600;
+      letter-spacing: -.025em;
+      color: var(--ink);
+      margin-bottom: 5px;
+    }
+
+    .step-desc {
+      font-size: 14px;
+      color: var(--sub);
+      line-height: 1.5;
+      letter-spacing: -.015em;
+    }
+
+    .step-desc code {
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 12.5px;
+      background: var(--bg);
+      padding: 1px 6px;
+      border-radius: 5px;
+      color: var(--ink);
+      letter-spacing: 0;
+    }
+
+    /* ─── Buttons ────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 20px;
+      border-radius: 980px;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -.02em;
+      border: none;
+      cursor: pointer;
+      transition: background .15s, opacity .15s, transform .1s;
+      text-decoration: none;
+      margin-top: 16px;
+      font-family: var(--font);
+    }
+
+    .btn:active { transform: scale(.97); }
+    .btn:disabled { opacity: .35; cursor: default; }
+
+    .btn-blue {
+      background: var(--blue);
+      color: #fff;
+    }
+
+    .btn-blue:hover:not(:disabled) { background: var(--blue-dk); }
+
+    .btn-neutral {
+      background: var(--bg);
+      color: var(--ink);
+    }
+
+    .btn-neutral:hover:not(:disabled) { background: #e8e8ed; }
+
+    /* ─── Progress ───────────────────────────────────────── */
+    .progress-area { margin-top: 16px; }
+
+    .progress-track {
+      background: var(--bg);
+      border-radius: 999px;
+      height: 4px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--blue);
+      width: 0%;
+      border-radius: 999px;
+      transition: width .4s ease;
+    }
+
+    .progress-fill.complete { background: var(--green); }
+
+    .progress-label {
+      font-size: 13px;
+      color: var(--sub);
+      margin-top: 8px;
+      letter-spacing: -.01em;
+      font-family: 'SF Mono', 'Menlo', monospace;
+    }
+
+    /* ─── Log ────────────────────────────────────────────── */
+    .log-area {
+      background: #f0f0f5;
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      max-height: 130px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 11.5px;
+      line-height: 1.8;
+      color: var(--sub);
+      display: none;
+    }
+
+    .log-area .ok   { color: #248a3d; }
+    .log-area .err  { color: var(--red); }
+    .log-area .info { color: var(--blue); }
+
+    /* ─── Status pill ────────────────────────────────────── */
+    .status-pill {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -.01em;
+    }
+
+    .status-pill.visible { display: inline-flex; }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .pill-blue  .status-dot { background: var(--blue); }
+    .pill-green .status-dot { background: var(--green); }
+    .pill-red   .status-dot { background: var(--red); }
+    .pill-blue  { color: var(--blue); }
+    .pill-green { color: #248a3d; }
+    .pill-red   { color: var(--red); }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+    .dot-blink { animation: blink 1.2s ease infinite; }
+
+    /* ─── Requirements note ──────────────────────────────── */
+    .req-note {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 24px 32px;
+      margin-bottom: 16px;
+      animation: fadeUp .6s ease both .45s;
+    }
+
+    .req-title {
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: -.01em;
+      color: var(--sub);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      font-size: 11px;
+      margin-bottom: 14px;
+    }
+
+    .req-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .req-list li {
+      font-size: 15px;
+      color: var(--ink);
+      letter-spacing: -.02em;
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+
+    .req-list li::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--blue);
+      margin-top: 7px;
+      flex-shrink: 0;
+    }
+
+    /* ─── Troubleshoot ───────────────────────────────────── */
+    .trouble-section {
+      margin-top: 16px;
+      animation: fadeUp .6s ease both .6s;
+    }
+
+    details {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+    }
+
+    summary {
+      padding: 22px 32px;
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -.02em;
+      color: var(--sub);
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      user-select: none;
+      outline: none;
+    }
+
+    summary::-webkit-details-marker { display: none; }
+
+    summary::after {
+      content: '';
+      width: 8px;
+      height: 8px;
+      border-right: 1.5px solid var(--faint);
+      border-bottom: 1.5px solid var(--faint);
+      transform: rotate(45deg);
+      transition: transform .2s;
+      margin-bottom: 4px;
+    }
+
+    details[open] summary::after { transform: rotate(225deg); margin-bottom: -2px; }
+    details[open] summary { color: var(--ink); }
+
+    .trouble-inner {
+      border-top: 1px solid var(--border);
+    }
+
+    .trouble-item {
+      padding: 22px 32px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .trouble-item:last-child { border-bottom: none; }
+
+    .trouble-q {
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -.02em;
+      margin-bottom: 6px;
+    }
+
+    .trouble-a {
+      font-size: 14px;
+      color: var(--sub);
+      line-height: 1.5;
+      letter-spacing: -.015em;
+    }
+
+    .trouble-a a { color: var(--blue); text-decoration: none; }
+    .trouble-a code {
+      font-family: 'SF Mono','Menlo',monospace;
+      font-size: 12px;
+      background: var(--bg);
+      padding: 1px 5px;
+      border-radius: 4px;
+      color: var(--ink);
+    }
+
+    /* ─── Responsive ─────────────────────────────────────── */
+    @media (max-width: 540px) {
+      .step-row { padding: 22px 20px; gap: 0 14px; }
+      .req-note { padding: 20px; }
+      summary, .trouble-item { padding: 18px 20px; }
+      .hero { padding: 48px 0 40px; }
+      .device-preview { width: 200px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- NAV -->
+  <nav>
+    <span class="nav-wordmark">Market Monitor</span>
+  </nav>
+
+  <!-- HERO -->
+  <div class="hero">
+    <!-- Animated device preview -->
+    <div class="device-preview">
+      <div class="device-shell">
+        <div class="device-screen">
+          <!-- Nav bar -->
+          <div class="scr-nav">
+            <div class="scr-pill active"></div>
+            <div class="scr-pill dim"></div>
+            <div class="scr-pill dim"></div>
+            <div class="scr-pill dim"></div>
+            <div class="scr-pill dim"></div>
+            <div class="scr-pill dim"></div>
+          </div>
+          <!-- Info -->
+          <div class="scr-info">
+            <div class="scr-left">
+              <div class="scr-sym">SPY <span style="color:#00e676;font-size:6px">● OPEN</span></div>
+              <div class="scr-chg">+0.42%  +$2.25</div>
+            </div>
+            <div>
+              <div class="scr-price">$531.44</div>
+              <div class="scr-time">10:42AM</div>
+            </div>
+          </div>
+          <!-- Chart -->
+          <div class="scr-chart">
+            <svg viewBox="0 0 320 94" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Grid lines -->
+              <line x1="0" y1="30" x2="320" y2="30" stroke="#1c2530" stroke-width=".8"/>
+              <line x1="0" y1="58" x2="320" y2="58" stroke="#1c2530" stroke-width=".8"/>
+              <!-- Fill area -->
+              <polygon
+                points="0,72 26,66 53,58 80,63 106,52 133,44 160,47 187,39 213,33 240,26 267,22 293,30 320,18 320,94 0,94"
+                fill="#00e676" fill-opacity=".08" class="chart-line" style="stroke:none;stroke-dasharray:none;animation:none;opacity:0;animation: chartFill 1.8s cubic-bezier(.4,0,.2,1) .4s forwards;">
+              </polygon>
+              <!-- Chart line -->
+              <polyline
+                class="chart-line"
+                points="0,72 26,66 53,58 80,63 106,52 133,44 160,47 187,39 213,33 240,26 267,22 293,30 320,18"
+                fill="none"
+                stroke="#00e676"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <!-- Market open dashed line -->
+              <line x1="40" y1="0" x2="40" y2="94" stroke="#3a4a5a" stroke-width=".8" stroke-dasharray="3,3"/>
+            </svg>
+          </div>
+          <!-- Timeframe bar -->
+          <div class="scr-tbar">
+            <span class="scr-tp active">1D</span>
+            <span class="scr-tp">1W</span>
+            <span class="scr-tp">1M</span>
+            <span class="scr-tp">1Y</span>
+            <span class="scr-tp">5Y</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h1>Market Monitor</h1>
+    <p>Live stock prices on your desk, always on. Install firmware to your device in under a minute.</p>
+  </div>
+
+  <!-- BROWSER WARNING -->
+  <div class="browser-bar" id="browser-bar">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px">
+      <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="#c07000" stroke-width="2" stroke-linecap="round"/>
+      <line x1="12" y1="9" x2="12" y2="13" stroke="#c07000" stroke-width="2" stroke-linecap="round"/>
+      <line x1="12" y1="17" x2="12.01" y2="17" stroke="#c07000" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span>Chrome or Edge required for device flashing. <a href="https://www.google.com/chrome/" target="_blank">Get Chrome →</a></span>
+  </div>
+
+  <!-- REQUIREMENTS -->
+  <div class="req-note">
+    <div class="req-title">Before you start</div>
+    <ul class="req-list">
+      <li>Chrome or Edge browser (required for Web Serial)</li>
+      <li>USB data cable — not a charge-only cable</li>
+      <li>Close Arduino IDE or any other app using the serial port</li>
+    </ul>
+  </div>
+
+  <!-- INSTALL CARD -->
+  <div class="install-card">
+
+    <!-- Step 1: Connect -->
+    <div class="step-row step-active" id="step-1">
+      <div class="step-circle">1</div>
+      <div class="step-body">
+        <div class="step-title">Connect your device</div>
+        <div class="step-desc">
+          Plug in via USB. Hold the <strong>BOOT</strong> button on the board, click Connect, then select the port labelled <code>CP210x</code> or <code>CH340</code> in the browser dialog.
+        </div>
+
+        <button class="btn btn-blue" id="btn-connect" onclick="connectDevice()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+          Connect Device
+        </button>
+
+        <div class="status-pill" id="connect-pill">
+          <span class="status-dot"></span>
+          <span id="connect-pill-text"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Flash -->
+    <div class="step-row step-disabled" id="step-2">
+      <div class="step-circle">2</div>
+      <div class="step-body">
+        <div class="step-title">Install firmware</div>
+        <div class="step-desc">
+          Installs Market Monitor v9.6.0. Takes about 30–60 seconds. Don't unplug during installation.
+        </div>
+
+        <button class="btn btn-blue" id="btn-flash" onclick="flashDevice()" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Install
+        </button>
+
+        <div class="progress-area" id="progress-area" style="display:none">
+          <div class="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+          <div class="progress-label" id="progress-label">Preparing…</div>
+        </div>
+
+        <div class="log-area" id="log-area"></div>
+      </div>
+    </div>
+
+    <!-- Step 3: Done -->
+    <div class="step-row step-disabled" id="step-3">
+      <div class="step-circle">3</div>
+      <div class="step-body">
+        <div class="step-title">Set up your device</div>
+        <div class="step-desc">
+          Firmware installed. Unplug and replug your device, then follow the guide to connect to WiFi and add stocks.
+        </div>
+        <a href="guide.html" class="btn btn-blue" id="btn-guide" style="display:none">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
+          Open Setup Guide
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /install-card -->
+
+  <!-- TROUBLESHOOT -->
+  <div class="trouble-section">
+    <details>
+      <summary>Troubleshooting</summary>
+      <div class="trouble-inner">
+
+        <div class="trouble-item">
+          <div class="trouble-q">No serial port appears in the dialog</div>
+          <div class="trouble-a">
+            Make sure you're using a data USB cable, not a charge-only cable. Try a different USB port.
+            On Windows, install the <a href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers" target="_blank">CP210x driver</a>
+            or <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank">CH340 driver</a>.
+            Mac users typically don't need drivers.
+          </div>
+        </div>
+
+        <div class="trouble-item">
+          <div class="trouble-q">Install fails immediately or gets stuck</div>
+          <div class="trouble-a">
+            Hold the <strong>BOOT</strong> button while clicking Install. On some boards: hold BOOT, tap RST briefly, then release BOOT.
+            Close Arduino IDE before trying again.
+          </div>
+        </div>
+
+        <div class="trouble-item">
+          <div class="trouble-q">Screen is blank after installing</div>
+          <div class="trouble-a">
+            Unplug and replug the cable. If still blank, hold BOOT + RST together for 3 seconds, then release. The device should restart normally.
+          </div>
+        </div>
+
+        <div class="trouble-item">
+          <div class="trouble-q">Prefer to install via Arduino IDE?</div>
+          <div class="trouble-a">
+            Board: <code>ESP32 Dev Module</code> · Partition: <code>Default 4MB with spiffs</code>.
+            Source code is in the firmware folder of this repository.
+          </div>
+        </div>
+
+      </div>
+    </details>
+  </div>
+
+</div><!-- /page -->
+
+<style>
+  @keyframes chartFill {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+</style>
+
+<script>
+const FIRMWARE_URL  = './firmware/firmware.bin';
+const FLASH_ADDRESS = 0x0000;
+const BAUD_RATE     = 460800;
+
+let espDevice = null;
+let transport = null;
+
+// Browser check
+window.addEventListener('DOMContentLoaded', () => {
+  if (!('serial' in navigator)) {
+    document.getElementById('browser-bar').classList.add('visible');
+  }
+});
+
+// Helpers
+function setStep(n, state) {
+  const el = document.getElementById(`step-${n}`);
+  el.classList.remove('step-active', 'step-done', 'step-disabled');
+  el.classList.add(`step-${state}`);
+}
+
+function setPill(id, type, text) {
+  const el = document.getElementById(id);
+  el.classList.add('visible');
+  el.className = `status-pill visible pill-${type}`;
+  const dot = el.querySelector('.status-dot');
+  dot.className = 'status-dot' + (type === 'blue' ? ' dot-blink' : '');
+  document.getElementById(id + '-text').textContent = text;
+}
+
+function log(msg, type = 'info') {
+  const box = document.getElementById('log-area');
+  box.style.display = 'block';
+  const line = document.createElement('div');
+  line.className = type;
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  line.textContent = `${ts}  ${msg}`;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  document.getElementById('progress-area').style.display = 'block';
+  const fill = document.getElementById('progress-fill');
+  fill.style.width = pct + '%';
+  if (pct >= 100) fill.classList.add('complete');
+  document.getElementById('progress-label').textContent = label;
+}
+
+// Connect
+async function connectDevice() {
+  if (!('serial' in navigator)) {
+    alert('Chrome or Edge is required for device installation.');
+    return;
+  }
+  const btn = document.getElementById('btn-connect');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+  setPill('connect-pill', 'blue', 'Connecting…');
+  try {
+    const port = await navigator.serial.requestPort();
+    transport = new Transport(port, true);
+    espDevice = new ESPLoader({
+      transport,
+      baudrate: BAUD_RATE,
+      romBaudrate: 115200,
+      terminal: {
+        clean() {},
+        writeLine(d) { log(d, 'info'); },
+        write(d) {}
+      }
+    });
+    const chip = await espDevice.main();
+    log(`Connected: ${chip}`, 'ok');
+    setPill('connect-pill', 'green', `Connected · ${chip}`);
+    btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg> Connected`;
+    setStep(1, 'done');
+    setStep(2, 'active');
+    document.getElementById('btn-flash').disabled = false;
+  } catch (err) {
+    log(`Failed: ${err.message}`, 'err');
+    setPill('connect-pill', 'red', 'Connection failed');
+    btn.disabled = false;
+    btn.textContent = 'Try Again';
+  }
+}
+
+// Flash
+async function flashDevice() {
+  if (!espDevice) return;
+  const btn = document.getElementById('btn-flash');
+  btn.disabled = true;
+  btn.textContent = 'Installing…';
+  setProgress(0, 'Downloading firmware…');
+  try {
+    const resp = await fetch(FIRMWARE_URL);
+    if (!resp.ok) throw new Error(`Could not download firmware (HTTP ${resp.status})`);
+    const buf = await resp.arrayBuffer();
+    log(`Firmware ready — ${(buf.byteLength / 1024).toFixed(0)} KB`, 'ok');
+    setProgress(5, 'Erasing…');
+
+    const uint8 = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+
+    await espDevice.eraseFlash();
+    log('Flash erased', 'ok');
+    setProgress(15, 'Writing…');
+
+    await espDevice.writeFlash({
+      fileArray: [{ data: binary, address: FLASH_ADDRESS }],
+      flashSize: 'keep',
+      flashMode: 'keep',
+      flashFreq: 'keep',
+      eraseAll: false,
+      compress: true,
+      reportProgress(fileIndex, written, total) {
+        const pct = 15 + Math.round((written / total) * 80);
+        setProgress(pct, `Writing  ${(written / 1024).toFixed(0)} / ${(total / 1024).toFixed(0)} KB`);
+      },
+      calculateMD5Hash(image) {
+        return CryptoJS.MD5(CryptoJS.enc.Latin1.parse(image)).toString();
+      }
+    });
+
+    setProgress(100, 'Done');
+    log('Installation complete', 'ok');
+    await espDevice.hardReset();
+    log('Device restarted — you can unplug now', 'ok');
+
+    setStep(2, 'done');
+    setStep(3, 'active');
+    document.getElementById('btn-guide').style.display = 'inline-flex';
+
+  } catch (err) {
+    log(`Error: ${err.message}`, 'err');
+    setProgress(0, 'Installation failed — see log above');
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+    console.error(err);
+  }
+}
+</script>
+</body>
+</html>
