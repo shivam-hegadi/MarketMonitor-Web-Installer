@@ -448,13 +448,11 @@
     }
 
     .req-title {
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 600;
-      letter-spacing: -.01em;
+      letter-spacing: .06em;
       color: var(--sub);
       text-transform: uppercase;
-      letter-spacing: .06em;
-      font-size: 11px;
       margin-bottom: 14px;
     }
 
@@ -616,7 +614,7 @@
               <!-- Fill area -->
               <polygon
                 points="0,72 26,66 53,58 80,63 106,52 133,44 160,47 187,39 213,33 240,26 267,22 293,30 320,18 320,94 0,94"
-                fill="#00e676" fill-opacity=".08" class="chart-line" style="stroke:none;stroke-dasharray:none;animation:none;opacity:0;animation: chartFill 1.8s cubic-bezier(.4,0,.2,1) .4s forwards;">
+                fill="#00e676" fill-opacity=".08" style="stroke:none;">
               </polygon>
               <!-- Chart line -->
               <polyline
@@ -665,6 +663,7 @@
       <li>Chrome or Edge browser (required for Web Serial)</li>
       <li>USB data cable — not a charge-only cable</li>
       <li>Close Arduino IDE or any other app using the serial port</li>
+      <li>Hold the <strong>BOOT</strong> button on your CYD while clicking Connect, then release after selecting the port</li>
     </ul>
   </div>
 
@@ -677,7 +676,7 @@
       <div class="step-body">
         <div class="step-title">Connect your device</div>
         <div class="step-desc">
-          Plug in via USB. Hold the <strong>BOOT</strong> button on the board, click Connect, then select the port labelled <code>CP210x</code> or <code>CH340</code> in the browser dialog.
+          Hold the <strong>BOOT</strong> button on the CYD, click Connect, select the port labelled <code>USB Serial</code> or <code>CH340</code> in the browser dialog, then release BOOT.
         </div>
 
         <button class="btn btn-blue" id="btn-connect" onclick="connectDevice()">
@@ -748,12 +747,10 @@
       <div class="trouble-inner">
 
         <div class="trouble-item">
-          <div class="trouble-q">No serial port appears in the dialog</div>
+          <div class="trouble-q">No serial port appears / connection fails immediately</div>
           <div class="trouble-a">
-            Make sure you're using a data USB cable, not a charge-only cable. Try a different USB port.
-            On Windows, install the <a href="https://www.silabs.com/developers/usb-to-uart-bridge-vcp-drivers" target="_blank">CP210x driver</a>
-            or <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank">CH340 driver</a>.
-            Mac users typically don't need drivers.
+            Make sure you're holding <strong>BOOT</strong> on the CYD when you click Connect and while selecting the port — release it only after the port dialog closes. Use a data USB cable, not a charge-only cable. Try a different USB port.
+            On Windows, install the <a href="https://www.wch-ic.com/downloads/CH341SER_EXE.html" target="_blank">CH340 driver</a> if the port doesn't appear at all. Mac users typically don't need drivers.
           </div>
         </div>
 
@@ -761,7 +758,7 @@
           <div class="trouble-q">Install fails immediately or gets stuck</div>
           <div class="trouble-a">
             Hold the <strong>BOOT</strong> button while clicking Install. On some boards: hold BOOT, tap RST briefly, then release BOOT.
-            Close Arduino IDE before trying again.
+            Close Arduino IDE or any Serial Monitor before trying again.
           </div>
         </div>
 
@@ -853,31 +850,55 @@ async function connectDevice() {
   btn.disabled = true;
   btn.textContent = 'Connecting…';
   setPill('connect-pill', 'blue', 'Connecting…');
+
   try {
+    // Request the serial port — user picks it in the browser dialog
     const port = await navigator.serial.requestPort();
+
+    // Build the transport and loader
     transport = new Transport(port, true);
+
     espDevice = new ESPLoader({
       transport,
       baudrate: BAUD_RATE,
       romBaudrate: 115200,
+      enableTracing: false,
       terminal: {
-        clean() {},
-        writeLine(d) { log(d, 'info'); },
-        write(d) {}
+        clean()       {},
+        writeLine(d)  { if (d && d.trim()) log(d.trim(), 'info'); },
+        write(d)      {}
       }
     });
-    const chip = await espDevice.main();
+
+    // main_fn() is the correct call in esptool-js 0.4.x
+    // (main() was renamed; calling the old name throws immediately)
+    const chip = await espDevice.main_fn();
+
     log(`Connected: ${chip}`, 'ok');
     setPill('connect-pill', 'green', `Connected · ${chip}`);
     btn.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none"><polyline points="20 6 9 17 4 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg> Connected`;
     setStep(1, 'done');
     setStep(2, 'active');
     document.getElementById('btn-flash').disabled = false;
+
   } catch (err) {
-    log(`Failed: ${err.message}`, 'err');
-    setPill('connect-pill', 'red', 'Connection failed');
+    // User cancelled the port picker — not a real error
+    if (err.name === 'NotFoundError' || err.message?.includes('No port selected')) {
+      setPill('connect-pill', 'red', 'No port selected');
+      btn.disabled = false;
+      btn.textContent = 'Connect Device';
+      return;
+    }
+    log(`Connection failed: ${err.message}`, 'err');
+    log('Tip: hold the BOOT button on the CYD, then click Connect again', 'info');
+    setPill('connect-pill', 'red', 'Connection failed — see log');
     btn.disabled = false;
     btn.textContent = 'Try Again';
+
+    // Clean up so the next attempt starts fresh
+    try { await transport?.disconnect(); } catch (_) {}
+    transport  = null;
+    espDevice  = null;
   }
 }
 
@@ -887,31 +908,30 @@ async function flashDevice() {
   const btn = document.getElementById('btn-flash');
   btn.disabled = true;
   btn.textContent = 'Installing…';
-  setProgress(0, 'Downloading firmware…');
+  setProgress(2, 'Downloading firmware…');
+
   try {
     const resp = await fetch(FIRMWARE_URL);
     if (!resp.ok) throw new Error(`Could not download firmware (HTTP ${resp.status})`);
     const buf = await resp.arrayBuffer();
     log(`Firmware ready — ${(buf.byteLength / 1024).toFixed(0)} KB`, 'ok');
-    setProgress(5, 'Erasing…');
 
+    // Convert ArrayBuffer → binary string (required by esptool-js)
     const uint8 = new Uint8Array(buf);
     let binary = '';
     for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
 
-    await espDevice.eraseFlash();
-    log('Flash erased', 'ok');
-    setProgress(15, 'Writing…');
+    setProgress(10, 'Writing firmware…');
 
     await espDevice.writeFlash({
       fileArray: [{ data: binary, address: FLASH_ADDRESS }],
       flashSize: 'keep',
       flashMode: 'keep',
       flashFreq: 'keep',
-      eraseAll: false,
+      eraseAll: true,      // erase inside writeFlash — avoids a separate eraseFlash() call
       compress: true,
       reportProgress(fileIndex, written, total) {
-        const pct = 15 + Math.round((written / total) * 80);
+        const pct = 10 + Math.round((written / total) * 85);
         setProgress(pct, `Writing  ${(written / 1024).toFixed(0)} / ${(total / 1024).toFixed(0)} KB`);
       },
       calculateMD5Hash(image) {
@@ -919,8 +939,9 @@ async function flashDevice() {
       }
     });
 
-    setProgress(100, 'Done');
+    setProgress(100, 'Done ✓');
     log('Installation complete', 'ok');
+
     await espDevice.hardReset();
     log('Device restarted — you can unplug now', 'ok');
 
@@ -930,6 +951,7 @@ async function flashDevice() {
 
   } catch (err) {
     log(`Error: ${err.message}`, 'err');
+    log('Hold BOOT and click Retry, or check the troubleshooting section below', 'info');
     setProgress(0, 'Installation failed — see log above');
     btn.disabled = false;
     btn.textContent = 'Retry';
